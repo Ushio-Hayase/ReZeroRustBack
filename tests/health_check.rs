@@ -2,6 +2,7 @@ use std::net::TcpListener;
 
 use re_zero_rust_back::configuration::get_configuration;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn health_check_works() {
@@ -29,7 +30,9 @@ async fn spawn_app() -> TestApp {
     let port = listener.local_addr().unwrap().port();
     let address = format!("http://127.0.0.1:{}", port);
 
-    let configuration = get_configuration().expect("failed to read configuration");
+    let mut configuration = get_configuration().expect("failed to read configuration");
+    configuration.database.database_name = Uuid::new_v4().to_string();
+
     let connection_pool = PgPool::connect(&configuration.database.connection_string())
         .await
         .expect("failed to connect to Postgres");

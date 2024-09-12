@@ -1,7 +1,7 @@
 use std::net::TcpListener;
 
-use re_zero_rust_back::configuration::get_configuration;
-use sqlx::PgPool;
+use re_zero_rust_back::configuration::{get_configuration, DatabaseSettings};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -33,9 +33,7 @@ async fn spawn_app() -> TestApp {
     let mut configuration = get_configuration().expect("failed to read configuration");
     configuration.database.database_name = Uuid::new_v4().to_string();
 
-    let connection_pool = PgPool::connect(&configuration.database.connection_string())
-        .await
-        .expect("failed to connect to Postgres");
+    let connection_pool = configure_database(&configuration.database).await;
 
     let server = re_zero_rust_back::startup::run(listener, connection_pool.clone())
         .expect("Failed to bind address");
@@ -46,6 +44,24 @@ async fn spawn_app() -> TestApp {
         address,
         db_pool: connection_pool,
     }
+}
+
+pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
+    let mut connection =PgConnection::connect(
+        &config.connection_string_without_db()
+    ).await.expect("failed to connect to Postgres");
+    connection.execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+    .await
+    .expect("failed to create database");
+
+    let connection_pool = PgPool::connect(&config.connection_string())
+    .await
+    .expect("failed to connect to Postgres");
+    sqlx::migrate!("./migrations").run(&connection_pool)
+    .await
+    .expect("failed to migrate the database")
+
+    connection_pool
 }
 
 #[tokio::test]
